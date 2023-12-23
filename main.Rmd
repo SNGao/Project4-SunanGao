@@ -62,7 +62,7 @@ Data was downloaded from TidyTuesday. The data this week comes from many differe
 
 ### **Author**
 
-This dashboard was made by **Sunan Gao**, the source code can be found (here)[].
+This dashboard was made by **Sunan Gao**, the source code can be found (here)[https://github.com/SNGao/Project4-SunanGao].
 
 ## Column {data-width="500"}
 
