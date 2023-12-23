@@ -1,0 +1,364 @@
+---
+title: "SunanGao-Project4"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: scroll
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+```
+
+```{r, warning=FALSE}
+library(here)
+library(purrr)
+
+## Test if a directory named data exists locally.
+if (!file.exists(here("data", "tuesdata_tuition_cost.csv"))) {
+    
+    tuesdata <- tidytuesdayR::tt_load('2020-03-10')
+    tuition_cost <- tuesdata$tuition_cost
+    
+    # File for saving data, must be created
+    save_directory <- here("data") 
+    if (!dir.exists(save_directory)) {
+      dir.create(save_directory, recursive = TRUE)
+    }
+    
+    # save the files to csv objects ()
+    write.csv(tuesdata$tuition_cost, 
+              file = here("data", "tuesdata_tuition_cost.csv"))
+}
+
+## Read in the data locally each time you knit/render
+tuition_cost = read.csv(here("data", "tuesdata_tuition_cost.csv"))
+tuition_cost$X = NULL
+tuition_cost$degree_length = ifelse(tuition_cost$degree_length == '4 Year', '4Y', '2Y')
+```
+
+# About
+
+## Column {data-width="500"}
+
+### **Purpose**
+
+**Purpose of the dashboard:**
+
+1.  This website is for **Project4** in the **Statistical Programming Paradigms and Workflows (BSPH 140.777)**. Moreover, this assignment is to practice building interactive dashboards and building effective data visualizations to communicate to an audience.
+
+2.  Provide an **interactive opportunity** to explore the **association between cost distribution under different variables** in United States. Meanwhile, it also answer other questions:
+
+    -   The association between Room and board and Tuition for in-state residents (Total cost).
+
+    -   Try to use **Bayesian kernel machine regression (BKMR)** to explore unlinear assocition between multivariables and cost.
+
+### **Data Source**
+
+Data was downloaded from TidyTuesday. The data this week comes from many different sources but originally came from the US Department of Education. Tuition and fees by college/university for 2018-2019, along with school type, degree length, state, in-state vs out-of-state from the Chronicle of Higher Education.
+
+[Original Data](https://github.com/rfordatascience/tidytuesday/blob/master/data/2020/2020-03-10/readme.md)
+
+### **Author**
+
+This dashboard was made by **Sunan Gao**, the source code can be found (here)[].
+
+## Column {data-width="500"}
+
+### **A video explaining this dashboard**
+
+<iframe width="700" height="480" src="https://www.youtube.com/embed/tZGno9552V4" frameborder="0" allowfullscreen></iframe>
+
+# Data
+
+### **About the data** {data-height="130"}
+
+Data was downloaded from TidyTuesday. The data this week comes from many different sources but originally came from the US Department of Education. Tuition and fees by college/university for 2018-2019, along with school type, degree length, state, in-state vs out-of-state from the Chronicle of Higher Education.
+
+### **Data Table**
+
+```{r}
+library(dplyr)
+library(ggplot2)
+tuition_cost %>% 
+  arrange(desc(state)) %>% 
+  head(100) %>% 
+  select(name, state, degree_length, in_state_tuition) %>% 
+  DT::datatable()
+```
+
+# **Analysis**
+
+```{r, warning=FALSE}
+library(tidyverse)
+library(stringr)
+
+# 1. Start with tuition cost dataset and drop any rows with NAs.
+tuition_cost <- tuition_cost %>%
+  drop_na()
+
+# 2. Convert the state names (character strings) to all upper case.
+tuition_cost <- tuition_cost %>%
+  mutate(state = str_to_upper(state))
+
+# 3. Create new column titled state_code_type that combines the state_code and school type into one column separated by “-”. (e.g. “TX-Private”).
+tuition_cost <- tuition_cost %>%
+  unite(state_code_type, state_code, type, sep = '-')
+```
+
+**Summary of tuition cost**
+
+```{r, warning=FALSE}
+# calculate the distribution of room and board of different schooles
+tuition_cost_summary <- tuition_cost %>% 
+  group_by(state_code_type) %>%
+  summarise(
+    mean_room_and_board = mean(room_and_board),
+    sd_room_and_board = sd(room_and_board))
+
+head(data.frame(head(tuition_cost_summary)))
+```
+
+**Summary of tuition cost group by state code type and degree length**
+
+```{r, warning=FALSE}
+# calculate the distribution of body mass of penguins
+tuition_cost_summary2 <- tuition_cost %>% 
+  select(-room_and_board) %>%
+  group_by(state_code_type, degree_length) %>%
+  summarise(
+    mean_in = mean(in_state_tuition),
+    sd_mass = sd(in_state_tuition))
+
+head(data.frame(tuition_cost_summary2))
+```
+
+```{r, warning=FALSE}
+# combine the observed data and summarized result
+tuition_cost_combined <- left_join(tuition_cost, tuition_cost_summary, 'state_code_type')
+```
+
+**Association between the Room and board and total tution in state**
+
+```{r, warning=FALSE}
+plot1 <- tuition_cost_combined %>% 
+  ggplot(aes(x = room_and_board, y = in_state_total)) + 
+  geom_point(aes(x = room_and_board, y = in_state_total),  linetype = "solid", color = rainbow(1861), size = 1) + 
+  labs(title = "Association between the Room and board and total tution in state",
+       subtitle = 'Point Chart: Room and board (USD) ~ Total tution (USD)',
+       caption = "Data from the Chronicle of Higher Education",
+       x = "Room and board in (USD)", y = "Total tution (USD)") + 
+  facet_wrap(~degree_length, ncol = NULL, scales = "free_y") +
+  theme_minimal()
+plot1
+```
+
+**The difference of total cost out of state in each state**
+
+```{r, warning=FALSE}
+plot2 <- tuition_cost_combined %>% 
+  group_by(state) %>% 
+  filter(room_and_board>10000) %>%
+  mutate(Mean_diff = out_of_state_total - mean(out_of_state_total)) %>%
+  ggplot(aes(x = state, y = Mean_diff)) + 
+  geom_histogram(stat = "identity", fill = rainbow(931)) + 
+  labs(title = "The difference of total cost out of state in each state",
+       subtitle = 'relative to the mean level at different state',
+       caption = "Data from the Chronicle of Higher Education",
+       x = "State", y = "The difference bewteen mean value and observations in each group") +
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size=6))
+plot2
+```
+
+### **BKMR Model**
+
+[Reference](https://jenfb.github.io/bkmr/overview.html)
+
+```{r, warning=FALSE}
+library(bkmr)
+# colnames(tuition_cost_combined)
+data = tuition_cost_combined[, c('room_and_board',
+                                 'degree_length', 
+                                 'mean_room_and_board',
+                                 'room_and_board',
+                                 'in_state_tuition',
+                                 'in_state_total',
+                                 'out_of_state_total',
+                                 'state')]
+
+data_unique = unique(data[data$out_of_state_total < 20000,])
+dat <- SimData(n = dim(data_unique)[1], M = 4) # introduce some nuisance data
+```
+
+**Adopt purrr function to facilitate process**
+
+```{r}
+## explore linear regression
+by_degree <- split(data_unique, data_unique$degree_length)
+
+## transform data
+string_to_integer <- function(column) {
+  as.integer(as.factor(column))
+}
+data_unique[, c(2,8)] <- map_dfc(.x = data_unique[, c(2,8)], .f = tolower)
+data_unique[, c(2,8)] <- map(data_unique[, c(2,8)], string_to_integer)
+```
+
+**Estimated posterior inclusion probabilities**
+
+Because we fit the model with variable selection (we set the argument varsel to be TRUE), we can estimate the posterior inclusion probability (PIP) for each of the exposures.
+
+```{r, warning=FALSE}
+set.seed(208)
+data_unique[,c(1:8)] = scale(data_unique[,c(1:8)])
+
+y <- as.matrix(data_unique$out_of_state_total)
+Z <- cbind(as.matrix(data_unique[, c(1,2,8)],), dat$Z)
+X <- as.matrix(data_unique[, c(3)])
+fitkm <- kmbayes(y = y, Z = Z, X = X, iter = 1000, verbose = FALSE, varsel = TRUE)
+ExtractPIPs(fitkm)
+# A posteriori inclusion probability in a simulated data set (the bigger the better)
+#TracePlot(fit = fitkm, par = "r", comp = 1)
+#TracePlot(fit = fitkm, par = "sigsq.eps")
+```
+
+### **Estimate hazard ratio** {data-height="600"}
+
+To estimate h(z) at a particular vector of exposures z, we note that the posterior distribution of h is normally distributed with posterior mean μh(θ) and variance Vh(θ), where θ denotes the vector of model parameters; the specific forms of these mean and variance functions are given in the supplemental material of [Bobb et al. 2015](http://biostatistics.oxfordjournals.org/content/16/3/493).
+
+```{r, fig.height=6}
+pred.resp.univar <- PredictorResponseUnivar(fit = fitkm)
+library(ggplot2)
+plot3 <- ggplot(pred.resp.univar, 
+                aes(z, est, ymin = est - 1.96*se, ymax = est + 1.96*se)) + 
+    geom_smooth(stat = "identity") + 
+    facet_wrap(~ variable) +
+    labs(title = "The univariate relationship between specific exposure and the total cost",
+       subtitle = 'All variables have been standarized to 0~1',
+       caption = "Data from the Chronicle of Higher Education",
+       x = "Scaled Value", y = "h(z)")
+```
+
+### **Hazard feature association**
+
+```{r}
+plot3
+```
+
+### **Summary of Analysis**
+
+-   The school in California, New York, Massachusetts, and Pennsylvania showed the top 4 highest deviation in total cost out of state.
+-   The total tuition in state showed two kinds of linear association with room and board. These two patterns can be detected to explore further.
+-   Even though we **considering nuisance parameter**, **BKMR could identify the actual effect** from room and board cost, degree length and state to total cost with out of state cost smaller than 20000. Also, **in the PIP value list**, room and board, degeree length and state showed the highest prbability, corrsponding to our expectations.
+
+# Static Plot-1
+
+## Column A
+
+### **Summary of tuition cost**
+
+```{r}
+head(data.frame(head(tuition_cost_summary)))
+```
+
+## Column B
+
+### **Summary of tuition cost group by state code type and degree length**
+
+```{r}
+head(data.frame(tuition_cost_summary2))
+```
+
+# Static Plot-2
+
+## Column A
+
+### **Room and board and total tution**
+
+```{r}
+plot1
+```
+
+## Column B {.tabset}
+
+### **Cost difference**
+
+```{r}
+plot2
+```
+
+### **Hazard variable**
+
+```{r}
+plot3
+```
+
+# Interactive-1
+
+[Reference Link-1](https://shiny.posit.co/r/articles/build/plot-interaction/)
+
+## Column1
+
+### **Interactive Table** {data-height="700"}
+
+The data was sorted by state_code_type variable, which is the combination of state code and school type (private school or public school). We present top 200 observations here, and you can find the target school by using search box.
+
+```{r}
+library(dplyr)
+library(ggplot2)
+tuition_cost %>% 
+  arrange(state_code_type) %>% 
+  select(name, state_code_type, room_and_board, out_of_state_tuition) %>% 
+  DT::datatable()
+```
+
+## Column2
+
+### **Interactive Figure**
+
+In this part, you can do interactions with the plot generated from the data analysis table. In other words, you can obtain more detailed information from here.
+
+```{r}
+library(shiny)
+library(plotly)
+ggplotly(plot2)
+```
+
+# Interactive-2
+
+## Column {.sidebar}
+
+**Choose degree length of University to see the different between them.**
+
+```{r}
+selectInput("degree_length", "Choose degree length:", 
+            choices = list("4Y"="4Y", 
+                           "2Y"="2Y"), 
+            selected = c("4Y"))
+```
+
+[Reference Link-2](https://pkgs.rstudio.com/flexdashboard/articles/examples)
+
+## Column
+
+```{r}
+filtered_data <- reactive({
+  tuition_cost_combined %>% 
+  filter(degree_length == input$degree_length)
+})
+
+renderPlot({
+  ggplot(filtered_data(),
+         aes(x = room_and_board, y = in_state_total)) + 
+  geom_point(aes(x = room_and_board, y = in_state_total),  
+             color = rainbow(dim(filtered_data())[1]), size = 1) + 
+  labs(title = "Association between the Room and board and total tution in state",
+       subtitle = 'Point Chart: Room and board (USD) ~ Total tution (USD)',
+       caption = "Data from the Chronicle of Higher Education",
+       x = "Room and board in (USD)", y = "Total tution (USD)")+
+  theme_minimal()
+}, height = 500)
+
+```
